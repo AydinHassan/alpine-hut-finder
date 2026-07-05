@@ -12,9 +12,12 @@ class Hut extends Model
     protected $keyType = 'int';
 
     protected $fillable = [
-        'id', 'name', 'country', 'club', 'latitude', 'longitude',
-        'altitude', 'total_beds', 'phone', 'website', 'catalog_synced_at',
+        'id', 'source', 'name', 'country', 'club', 'latitude', 'longitude',
+        'altitude', 'total_beds', 'phone', 'website', 'booking_url', 'catalog_synced_at',
     ];
+
+    /** Offset for huetten-holiday hut ids so they never collide with HRS hutIds. */
+    public const HUETTEN_HOLIDAY_ID_OFFSET = 1_000_000;
 
     protected function casts(): array
     {
@@ -34,6 +37,7 @@ class Hut extends Model
 
     public function bookingUrl(): string
     {
-        return "https://www.hut-reservation.org/reservation/book-hut/{$this->id}/wizard";
+        return $this->booking_url
+            ?? "https://www.hut-reservation.org/reservation/book-hut/{$this->id}/wizard";
     }
 }

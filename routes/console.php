@@ -13,3 +13,6 @@ Artisan::command('inspire', function () {
 // upstream (rate-limited per request) and never run on a page view.
 Schedule::command('huts:sync-availability')->hourly()->withoutOverlapping();
 Schedule::command('huts:sync-catalog')->weekly()->sundays()->at('03:00')->withoutOverlapping();
+
+// Second source: ÖTK / private / opted-out huts on huetten-holiday.com.
+Schedule::command('huts:sync-huetten-holiday')->hourly()->withoutOverlapping();

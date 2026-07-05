@@ -23,7 +23,9 @@ class SyncHutAvailability extends Command
         $today = CarbonImmutable::today();
         $horizon = $today->addDays($days);
 
-        $huts = Hut::query()->orderBy('id')->get();
+        // Only HRS huts — huetten-holiday huts get their availability from a
+        // separate command (huts:sync-huetten-holiday).
+        $huts = Hut::query()->where('source', 'hrs')->orderBy('id')->get();
         if ($huts->isEmpty()) {
             $this->warn('No huts stored yet. Run huts:sync-catalog first.');
 

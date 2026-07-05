@@ -57,7 +57,11 @@ class SyncHutCatalog extends Command
                 } elseif ($austria->contains($hut['latitude'], $hut['longitude'])) {
                     Hut::updateOrCreate(
                         ['id' => $hut['id']],
-                        $hut + ['catalog_synced_at' => now()],
+                        $hut + [
+                            'source' => 'hrs',
+                            'booking_url' => "https://www.hut-reservation.org/reservation/book-hut/{$hut['id']}/wizard",
+                            'catalog_synced_at' => now(),
+                        ],
                     );
                     $kept++;
                 }

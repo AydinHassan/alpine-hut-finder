@@ -2,8 +2,10 @@
 
 namespace App\Services;
 
+use App\Support\CoordinateParser;
 use Illuminate\Http\Client\PendingRequest;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\Storage;
 
 /**
  * Read-only client for the (undocumented, public) Alpenverein / SAC Hut
@@ -12,10 +14,23 @@ use Illuminate\Support\Facades\Http;
  *
  * Called server-side only (the upstream sends no CORS headers) and everything
  * is cached in our own DB; we poll on a schedule rather than on page views.
+ *
+ * Every raw response is also written to an on-disk snapshot cache
+ * (storage/app/hrs-cache) so repeated runs — development, re-syncs, tweaking the
+ * catalog filter — reuse saved data instead of re-hitting the upstream. hutInfo
+ * (the catalog) rarely changes so it is cached for a month; availability uses a
+ * short TTL so scheduled syncs still see fresh free-bed counts.
  */
 class HutReservationService
 {
     private const BASE = 'https://www.hut-reservation.org/api/v1/reservation';
+
+    private const CACHE_DIR = 'hrs-cache';
+
+    private const HUTINFO_TTL = 2592000; // 30 days
+
+    /** Availability cache TTL in seconds; 0 disables (always fetch). */
+    public int $availabilityTtl = 1800; // 30 min
 
     private function client(): PendingRequest
     {
@@ -30,12 +45,39 @@ class HutReservationService
     }
 
     /**
+     * Read a cached JSON snapshot if it is younger than $ttl seconds.
+     */
+    private function cacheGet(string $key, int $ttl): mixed
+    {
+        if ($ttl <= 0) {
+            return null;
+        }
+
+        $path = self::CACHE_DIR."/{$key}.json";
+        $disk = Storage::disk('local');
+        if (! $disk->exists($path) || (time() - $disk->lastModified($path)) > $ttl) {
+            return null;
+        }
+
+        return json_decode((string) $disk->get($path), true);
+    }
+
+    private function cachePut(string $key, mixed $value): void
+    {
+        Storage::disk('local')->put(self::CACHE_DIR."/{$key}.json", json_encode($value));
+    }
+
+    /**
      * Raw hut metadata for a single hutId, or null if it doesn't exist / errors.
      *
      * @return array<string, mixed>|null
      */
     public function hutInfo(int $hutId): ?array
     {
+        if (($cached = $this->cacheGet("hutInfo-{$hutId}", self::HUTINFO_TTL)) !== null) {
+            return $cached ?: null;
+        }
+
         try {
             $response = $this->client()->get("/hutInfo/{$hutId}");
         } catch (\Throwable) {
@@ -49,8 +91,10 @@ class HutReservationService
         }
 
         $data = $response->json();
+        $data = isset($data['hutId']) ? $data : null;
+        $this->cachePut("hutInfo-{$hutId}", $data ?: false);
 
-        return isset($data['hutId']) ? $data : null;
+        return $data;
     }
 
     /**
@@ -60,6 +104,10 @@ class HutReservationService
      */
     public function availability(int $hutId): array
     {
+        if (($cached = $this->cacheGet("availability-{$hutId}", $this->availabilityTtl)) !== null) {
+            return $cached;
+        }
+
         try {
             $response = $this->client()->get('/getHutAvailability', ['hutId' => $hutId]);
         } catch (\Throwable) {
@@ -70,7 +118,10 @@ class HutReservationService
             return [];
         }
 
-        return $response->json();
+        $data = $response->json();
+        $this->cachePut("availability-{$hutId}", $data);
+
+        return $data;
     }
 
     /**
@@ -81,7 +132,7 @@ class HutReservationService
      */
     public function normaliseHut(array $info): array
     {
-        [$lat, $lon] = $this->parseCoordinates($info['coordinates'] ?? null);
+        [$lat, $lon] = CoordinateParser::parse($info['coordinates'] ?? null) ?? [null, null];
 
         return [
             'id' => (int) $info['hutId'],
@@ -95,26 +146,6 @@ class HutReservationService
             'phone' => $info['phone'] ?? null,
             'website' => $info['hutWebsite'] ?? null,
         ];
-    }
-
-    /**
-     * "46.3036, 7.4617" => [46.3036, 7.4617]; unparseable => [null, null].
-     *
-     * @return array{0: float|null, 1: float|null}
-     */
-    private function parseCoordinates(?string $raw): array
-    {
-        if (! $raw) {
-            return [null, null];
-        }
-
-        $parts = array_map('trim', explode(',', $raw));
-
-        if (count($parts) !== 2 || ! is_numeric($parts[0]) || ! is_numeric($parts[1])) {
-            return [null, null];
-        }
-
-        return [(float) $parts[0], (float) $parts[1]];
     }
 
     /**

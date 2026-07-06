@@ -1,13 +1,14 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { BedDouble, ExternalLink, LocateFixed, MapPin, Mountain } from 'lucide-vue-next';
+import { BedDouble, ExternalLink, LocateFixed, Mail, MapPin, Mountain, Phone } from 'lucide-vue-next';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Card } from '@/components/ui/card';
+import { Switch } from '@/components/ui/switch';
 import SearchBox from '@/components/SearchBox.vue';
 import DatePicker from '@/components/DatePicker.vue';
 import HutMap from '@/components/HutMap.vue';
-import type { HutView, Payload } from '@/types';
+import type { HutView, ManualHutView, Payload } from '@/types';
 
 const props = defineProps<{ payload: Payload }>();
 
@@ -22,6 +23,9 @@ const origin = ref<[number, number] | null>(null);
 const originLabel = ref<string | null>(null);
 const selectedDate = ref<string | null>(null);
 const locating = ref(false);
+const showManual = ref(false);
+
+const MANUAL_LIST_LIMIT = 60;
 
 const dates = computed(() => {
     const out: string[] = [];
@@ -58,6 +62,13 @@ const huts = computed<HutView[]>(() => {
     list.sort((a, b) => (a.distance != null && b.distance != null ? a.distance - b.distance : b.maxFree - a.maxFree));
     return list;
 });
+
+// Book-direct huts (no availability), sorted by distance / name.
+const manualHuts = computed<ManualHutView[]>(() =>
+    props.payload.manualHuts
+        .map((h) => ({ ...h, distance: origin.value ? haversine(origin.value, [h.lat, h.lng]) : null }))
+        .sort((a, b) => (a.distance != null && b.distance != null ? a.distance - b.distance : a.name.localeCompare(b.name))),
+);
 
 function setOrigin(coords: [number, number] | null, label: string | null) {
     origin.value = coords;
@@ -161,7 +172,15 @@ onMounted(autoLocate);
             </p>
         </Card>
 
-        <HutMap :huts="huts" :origin="origin" :days="payload.days" class="mb-4" />
+        <HutMap :huts="huts" :manual="showManual ? manualHuts : []" :origin="origin" :days="payload.days" class="mb-4" />
+
+        <label class="mb-4 flex cursor-pointer items-center justify-between gap-3 rounded-lg border bg-card px-3 py-2.5">
+            <span class="text-sm">
+                Include book-direct huts
+                <span class="text-muted-foreground">— {{ payload.manualHuts.length }} more, booked by phone/email</span>
+            </span>
+            <Switch v-model="showManual" />
+        </label>
 
         <p class="mb-3 text-sm text-muted-foreground">
             {{ huts.length }} hut{{ huts.length === 1 ? '' : 's' }} with free beds<template v-if="selectedDate">
@@ -212,9 +231,42 @@ onMounted(autoLocate);
             </li>
         </ul>
 
+        <template v-if="showManual && manualHuts.length">
+            <h2 class="mt-9 mb-1 text-sm font-semibold">Book direct — no online availability</h2>
+            <p class="mb-3 text-xs text-muted-foreground">
+                {{ manualHuts.length }} huts you book by phone or email. Showing the nearest {{ Math.min(MANUAL_LIST_LIMIT, manualHuts.length) }} in the list; all are on the map.
+            </p>
+            <ul class="flex flex-col gap-3">
+                <li v-for="h in manualHuts.slice(0, MANUAL_LIST_LIMIT)" :key="h.id">
+                    <Card class="gap-0 border-dashed p-4">
+                        <div class="min-w-0">
+                            <h3 class="truncate font-semibold">{{ h.name }}</h3>
+                            <div class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                                <Badge v-if="h.club" variant="secondary" class="font-normal">{{ h.club }}</Badge>
+                                <span v-if="h.altitude" class="inline-flex items-center gap-1"><Mountain class="size-3.5" />{{ h.altitude }} m</span>
+                                <span v-if="h.distance != null" class="inline-flex items-center gap-1"><MapPin class="size-3.5" />{{ h.distance.toFixed(0) }} km</span>
+                            </div>
+                        </div>
+                        <div class="mt-3 flex flex-wrap items-center gap-2">
+                            <Button v-if="h.phone" as-child variant="outline" size="sm">
+                                <a :href="`tel:${h.phone}`"><Phone class="size-3.5" />{{ h.phone }}</a>
+                            </Button>
+                            <Button v-if="h.email" as-child variant="outline" size="sm">
+                                <a :href="`mailto:${h.email}`"><Mail class="size-3.5" />Email</a>
+                            </Button>
+                            <Button v-if="h.website" as-child variant="outline" size="sm">
+                                <a :href="webUrl(h.website)" target="_blank" rel="noopener">Website <ExternalLink class="size-3.5" /></a>
+                            </Button>
+                        </div>
+                    </Card>
+                </li>
+            </ul>
+        </template>
+
         <footer class="mt-10 text-center text-xs text-muted-foreground">
-            Data from the Alpenverein / SAC Hut Reservation Service &amp; huetten-holiday.com. Location &amp; map © OpenStreetMap
-            contributors. Availability is cached — always confirm on the booking page before travelling.
+            Data from the Alpenverein / SAC Hut Reservation Service &amp; huetten-holiday.com; book-direct huts from
+            OpenStreetMap. Location &amp; map © OpenStreetMap contributors. Availability is cached — always confirm on the
+            booking page before travelling.
         </footer>
     </div>
 </template>

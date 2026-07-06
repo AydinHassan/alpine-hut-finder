@@ -17,8 +17,25 @@ export interface Hut {
     nights: Night[];
 }
 
+export interface ManualHut {
+    id: number;
+    name: string;
+    club: string | null;
+    lat: number;
+    lng: number;
+    altitude: number | null;
+    phone: string | null;
+    email: string | null;
+    website: string | null;
+}
+
+export interface ManualHutView extends ManualHut {
+    distance: number | null;
+}
+
 export interface Payload {
     huts: Hut[];
+    manualHuts: ManualHut[];
     days: number;
     today: string;
     updatedAt: string | null;

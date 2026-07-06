@@ -2,6 +2,7 @@
 
 use App\Sources\HrsSource;
 use App\Sources\HuettenHolidaySource;
+use App\Sources\OsmSource;
 
 return [
 
@@ -19,6 +20,8 @@ return [
     'sources' => [
         HrsSource::class,
         HuettenHolidaySource::class,
+        // Must come last: it dedupes against the live-availability huts above.
+        OsmSource::class,
     ],
 
     // Days of availability to cache ahead.

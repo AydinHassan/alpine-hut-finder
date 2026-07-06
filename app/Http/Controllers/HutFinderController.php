@@ -12,8 +12,9 @@ class HutFinderController extends Controller
 {
     /**
      * Public "last-minute huts with free beds near me" page. All the data the
-     * client needs (huts + upcoming availability) is embedded once; the browser
-     * handles geolocation, distance sorting and date filtering.
+     * client needs (huts + upcoming availability, plus the opt-in book-direct
+     * huts) is embedded once; the browser handles geolocation, distance sorting
+     * and date filtering.
      */
     public function index(Request $request): View
     {
@@ -22,16 +23,15 @@ class HutFinderController extends Controller
         $today = CarbonImmutable::today();
         $horizon = $today->addDays($days);
 
+        $inWindow = fn ($query) => $query->whereBetween('date', [$today->toDateString(), $horizon->toDateString()]);
+
+        // Huts we track availability for, that have a free bed in the window.
         $huts = Hut::query()
             ->whereNotNull('latitude')
             ->whereNotNull('longitude')
-            ->with(['availabilities' => function ($query) use ($today, $horizon) {
-                $query->whereBetween('date', [$today->toDateString(), $horizon->toDateString()])
-                    ->orderBy('date');
-            }])
+            ->whereHas('availabilities', fn ($q) => $inWindow($q)->where('free_beds', '>', 0))
+            ->with(['availabilities' => fn ($q) => $inWindow($q)->orderBy('date')])
             ->get()
-            // Only ship huts that actually have a free bed somewhere in the window.
-            ->filter(fn (Hut $hut) => $hut->availabilities->contains(fn ($a) => $a->free_beds > 0))
             ->map(fn (Hut $hut) => [
                 'id' => $hut->id,
                 'name' => $hut->name,
@@ -50,8 +50,31 @@ class HutFinderController extends Controller
             ])
             ->values();
 
+        // Book-direct huts: we hold no availability for them, only contact
+        // details. Shown behind an opt-in toggle so people can still find them.
+        $manualHuts = Hut::query()
+            ->whereNotNull('latitude')
+            ->whereNotNull('longitude')
+            ->whereDoesntHave('availabilities')
+            ->where(fn ($q) => $q->whereNotNull('phone')->orWhereNotNull('email')->orWhereNotNull('website'))
+            ->orderBy('name')
+            ->get()
+            ->map(fn (Hut $hut) => [
+                'id' => $hut->id,
+                'name' => $hut->name,
+                'club' => $hut->club,
+                'lat' => $hut->latitude,
+                'lng' => $hut->longitude,
+                'altitude' => $hut->altitude,
+                'phone' => $hut->phone,
+                'email' => $hut->email,
+                'website' => $hut->website,
+            ])
+            ->values();
+
         $payload = [
             'huts' => $huts,
+            'manualHuts' => $manualHuts,
             'days' => $days,
             'today' => $today->toDateString(),
             'updatedAt' => HutAvailability::query()->max('fetched_at')

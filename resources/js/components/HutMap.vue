@@ -2,9 +2,14 @@
 import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import L from 'leaflet';
 import { Maximize2, Minimize2 } from 'lucide-vue-next';
-import type { HutView } from '@/types';
+import type { HutView, ManualHutView } from '@/types';
 
-const props = defineProps<{ huts: HutView[]; origin: [number, number] | null; days: number }>();
+const props = defineProps<{
+    huts: HutView[];
+    manual?: ManualHutView[];
+    origin: [number, number] | null;
+    days: number;
+}>();
 
 const el = ref<HTMLDivElement | null>(null);
 const isFull = ref(false);
@@ -60,11 +65,33 @@ function popup(h: HutView): string {
     );
 }
 
+function manualPopup(h: ManualHutView): string {
+    const dist = h.distance != null ? ` · ${h.distance.toFixed(0)} km away` : '';
+    const link = 'display:block;margin-top:.2rem;color:#059669;text-decoration:none';
+    const rows = [
+        h.phone ? `<a href="tel:${h.phone}" style="${link}">📞 ${h.phone}</a>` : '',
+        h.email ? `<a href="mailto:${h.email}" style="${link}">✉️ ${h.email}</a>` : '',
+        h.website ? `<a href="${webUrl(h.website)}" target="_blank" rel="noopener" style="${link}">🌐 Website ↗</a>` : '',
+    ].join('');
+    return (
+        `<div style="font:14px/1.4 system-ui,sans-serif"><strong>${h.name}</strong>` +
+        `<div style="color:#6b7280;font-size:.8rem;margin:.15rem 0 .1rem">${h.altitude ? h.altitude + ' m' : ''}${dist}<br>Book direct</div>${rows}</div>`
+    );
+}
+
 function draw() {
     if (!map || !hutLayer) return;
     map.invalidateSize();
     hutLayer.clearLayers();
     const pts: [number, number][] = [];
+    // Book-direct huts first, so the availability badges sit on top of them.
+    for (const h of props.manual ?? []) {
+        L.circleMarker([h.lat, h.lng], {
+            radius: 5, color: '#6b7280', weight: 1.5, fillColor: '#9ca3af', fillOpacity: 0.85,
+        })
+            .bindPopup(manualPopup(h))
+            .addTo(hutLayer);
+    }
     for (const h of props.huts) {
         const icon = L.divIcon({ className: '', html: badge(h.freeNow), iconSize: [34, 20], iconAnchor: [17, 10] });
         L.marker([h.lat, h.lng], { icon }).bindPopup(popup(h)).addTo(hutLayer);
@@ -126,7 +153,7 @@ watch(isFull, () => {
     swapping.value = true;
     requestAnimationFrame(() => requestAnimationFrame(rebuild));
 });
-watch(() => [props.huts, props.origin] as const, draw, { deep: true });
+watch(() => [props.huts, props.manual, props.origin] as const, draw, { deep: true });
 </script>
 
 <template>

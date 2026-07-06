@@ -13,7 +13,7 @@ class Hut extends Model
 
     protected $fillable = [
         'id', 'source', 'name', 'country', 'club', 'latitude', 'longitude',
-        'altitude', 'total_beds', 'phone', 'website', 'booking_url', 'catalog_synced_at',
+        'altitude', 'total_beds', 'phone', 'email', 'website', 'booking_url', 'catalog_synced_at',
     ];
 
     /** Offset for huetten-holiday hut ids so they never collide with HRS hutIds. */

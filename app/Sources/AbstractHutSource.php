@@ -87,6 +87,47 @@ abstract class AbstractHutSource implements HutSource
         return count($rows);
     }
 
+    /**
+     * Coordinates of every stored hut from a *different* source — to dedupe a
+     * new source against them (same physical hut must not appear twice).
+     *
+     * @return array<int, array{0: float, 1: float}>
+     */
+    protected function otherSourcePoints(): array
+    {
+        return Hut::query()
+            ->where('source', '!=', $this->key())
+            ->whereNotNull('latitude')
+            ->get(['latitude', 'longitude'])
+            ->map(fn ($h) => [(float) $h->latitude, (float) $h->longitude])
+            ->all();
+    }
+
+    /**
+     * @param  array<int, array{0: float, 1: float}>  $points
+     */
+    protected function near(float $lat, float $lon, array $points, float $metres = 250): bool
+    {
+        foreach ($points as [$plat, $plon]) {
+            if ($this->metres($lat, $lon, $plat, $plon) < $metres) {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    protected function metres(float $lat1, float $lon1, float $lat2, float $lon2): float
+    {
+        $r = 6371000;
+        $rad = fn (float $x) => $x * M_PI / 180;
+        $dLat = $rad($lat2 - $lat1);
+        $dLon = $rad($lon2 - $lon1);
+        $a = sin($dLat / 2) ** 2 + cos($rad($lat1)) * cos($rad($lat2)) * sin($dLon / 2) ** 2;
+
+        return 2 * $r * asin(sqrt($a));
+    }
+
     /** The stored huts belonging to this source. */
     protected function huts()
     {

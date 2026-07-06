@@ -1,8 +1,7 @@
 <?php
 
-use App\Sources\HrsSource;
+use App\Sources\AlpenvereinSource;
 use App\Sources\HuettenHolidaySource;
-use App\Sources\OsmSource;
 
 return [
 
@@ -11,17 +10,19 @@ return [
     | Hut data sources
     |--------------------------------------------------------------------------
     |
-    | Every booking platform we pull availability from. `huts:sync` drives each
-    | through the same catalogue + availability phases. To add a platform:
-    | implement App\Sources\HutSource and add its class here — nothing else.
+    | Every platform we pull huts from. `huts:sync` drives each through the same
+    | catalogue + availability phases. To add a platform: implement
+    | App\Sources\HutSource and add its class here.
+    |
+    | Order matters: huetten-holiday runs first so the Alpenverein directory
+    | dedupes against it (an opted-out section hut is bookable on huetten-holiday
+    | but only book-direct in the directory — keep the bookable one).
     |
     */
 
     'sources' => [
-        HrsSource::class,
         HuettenHolidaySource::class,
-        // Must come last: it dedupes against the live-availability huts above.
-        OsmSource::class,
+        AlpenvereinSource::class,
     ],
 
     // Days of availability to cache ahead.

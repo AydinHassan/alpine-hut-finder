@@ -11,17 +11,31 @@ server (`imp`) with auto-deploy on merge to `main`.
 
 ## Where the data comes from
 
-Two booking platforms expose **real per-date free-bed counts** and are the only
-sources with queryable availability for Austrian huts:
+The hut **catalogue** comes from the official **Alpenverein (Club Arc Alpin) hut
+directory** — the same ArcGIS dataset the Alpenverein's own "Bettencheck" map
+uses. One query returns every DAV/ÖAV/AVS hut with clean WGS84 coordinates,
+club, altitude, phone/email/homepage, and an `ohrs_hut_id` that links to the
+online booking system.
 
-| Source (`huts.source`) | What | Endpoint |
+**Availability** then comes from two platforms:
+
+| Source (`huts.source`) | Catalogue | Availability |
 | --- | --- | --- |
-| `hrs` | Alpenverein / SAC Hut Reservation Service — DAV, ÖAV, AVS, SAC huts | `hut-reservation.org/api/v1/reservation` |
-| `huetten-holiday` | ÖTK, private Schutzhütten, opted-out AV sections (e.g. Fischerhütte) | `huetten-holiday.com` |
+| `alpenverein` | CAA ArcGIS directory (`services1.arcgis.com/.../AVT_GEO_CAA_HUETTEN_View_P`) | huts with an `ohrs_hut_id`: `hut-reservation.org` per-date beds |
+| `huetten-holiday` | `huetten-holiday.com` (ÖTK, private, opted-out sections, e.g. Fischerhütte) | `huetten-holiday.com` per-date beds |
 
-Together ≈ **275 Austrian huts** with live availability. (Most of Austria's
-~1,500 huts — Naturfreunde, many private — have *no* queryable availability at
-all; they book by phone/email only.)
+Every hut carries a `bookable_online` flag:
+
+- **`true`** — has an online booking system with queryable availability (an
+  Alpenverein hut with an `ohrs_hut_id`, or any huetten-holiday hut). ~235 in
+  Austria. A booked-out one simply has no free beds — it is *not* shown as
+  book-direct.
+- **`false`** — **book-direct**: an Alpenverein-directory hut with no online
+  system, only phone/email/homepage. ~415 in Austria, shown behind an opt-in
+  toggle.
+
+(An earlier version enumerated hut ids by hand and scraped OpenStreetMap for the
+book-direct huts — the directory replaces all of that with one clean source.)
 
 ## How availability checking works (and no, it doesn't hammer the APIs)
 

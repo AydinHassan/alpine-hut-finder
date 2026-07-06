@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import L from 'leaflet';
 import { Maximize2, Minimize2 } from 'lucide-vue-next';
 import type { HutView } from '@/types';
@@ -12,21 +12,23 @@ const isFull = ref(false);
 // "Pseudo" fullscreen — a fixed full-viewport overlay rather than the browser
 // Fullscreen API, which is flaky (black backdrop, headless quirks). Leaflet
 // must be told to recompute its size once the container has resized.
+// Toggling just changes CSS. A ResizeObserver (set up in onMounted) notices the
+// container actually resized — after the browser has committed layout — and
+// tells Leaflet to recompute size + reload tiles at that exact moment.
 function toggleFullscreen() {
     isFull.value = !isFull.value;
-    nextTick(() => map?.invalidateSize());
-    setTimeout(() => map?.invalidateSize(), 120);
 }
 
 function onKey(e: KeyboardEvent) {
     if (e.key === 'Escape' && isFull.value) {
         isFull.value = false;
-        nextTick(() => map?.invalidateSize());
     }
 }
 let map: L.Map | undefined;
+let tile: L.TileLayer | undefined;
 let hutLayer: L.LayerGroup | undefined;
 let meMarker: L.CircleMarker | undefined;
+let ro: ResizeObserver | undefined;
 
 const COLOR: Record<string, string> = { lots: '#059669', some: '#d97706', none: '#9ca3af' };
 const tone = (free: number) => (free <= 0 ? 'none' : free < 5 ? 'some' : 'lots');
@@ -82,15 +84,23 @@ function draw() {
 
 onMounted(() => {
     map = L.map(el.value!, { scrollWheelZoom: false }).setView([47.6, 13.3], 7);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    tile = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 18,
         attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(map);
+    });
+    tile.addTo(map);
     hutLayer = L.layerGroup().addTo(map);
     draw();
+
+    // Fires after the browser commits any size change to the container (e.g. the
+    // fullscreen toggle) — the correct moment to let Leaflet reload tiles.
+    ro = new ResizeObserver(() => map?.invalidateSize());
+    ro.observe(el.value!);
+
+    document.addEventListener('keydown', onKey);
 });
-onMounted(() => document.addEventListener('keydown', onKey));
 onBeforeUnmount(() => {
+    ro?.disconnect();
     document.removeEventListener('keydown', onKey);
     map?.remove();
 });
@@ -98,8 +108,8 @@ watch(() => [props.huts, props.origin] as const, draw, { deep: true });
 </script>
 
 <template>
-    <div :class="isFull ? 'fixed inset-0 z-[2000] bg-background p-3' : 'relative'">
-        <div ref="el" class="w-full overflow-hidden border bg-muted" :class="isFull ? 'h-full rounded-lg' : 'h-[460px] rounded-xl'"></div>
+    <div :class="isFull ? 'fixed inset-0 z-[2000] bg-background' : 'relative'">
+        <div ref="el" class="overflow-hidden bg-muted" :class="isFull ? 'h-dvh w-screen' : 'h-[460px] w-full rounded-xl border'"></div>
         <button
             type="button"
             class="absolute top-3 right-3 z-[500] flex size-9 items-center justify-center rounded-md border bg-background/90 text-foreground shadow-sm backdrop-blur transition hover:bg-accent"

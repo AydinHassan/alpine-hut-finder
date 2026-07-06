@@ -68,8 +68,23 @@
       .toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; margin-bottom: 1rem; }
       .toggle button { border: 0; border-radius: 0; padding: .45rem 1rem; }
       .toggle button.active { background: var(--accent); color: var(--accent-fg); }
+      /* date field */
+      .daterow { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
+      .datelabel { display: flex; align-items: center; gap: .4rem; font-size: .85rem; color: var(--muted); }
+      .datelabel input { font: inherit; padding: .4rem .55rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); }
+      #any-night.active { border-color: var(--accent); background: rgba(16,185,129,.12); }
       /* map */
       #map { height: 460px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 1rem; }
+      /* numbered availability badge on the map */
+      .hut-badge {
+        display: flex; align-items: center; justify-content: center;
+        width: 34px; height: 20px; border-radius: 999px; color: #fff;
+        font: 700 11px/1 system-ui, sans-serif; border: 1.5px solid #fff;
+        box-shadow: 0 1px 3px rgba(0,0,0,.45);
+      }
+      .hut-badge.tone-lots { background: #059669; }
+      .hut-badge.tone-some { background: #d97706; }
+      .hut-badge.tone-none { background: #9ca3af; }
       .leaflet-popup-content { font: inherit; margin: .6rem .8rem; }
       .pop-name { font-weight: 600; }
       .pop-meta { color: #555; font-size: .8rem; margin: .15rem 0 .4rem; }
@@ -116,16 +131,21 @@
         <p class="loc-label muted" id="origin"></p>
       </section>
 
-      <div class="chips" id="dates"></div>
+      <div class="daterow">
+        <label class="datelabel">Night
+          <input type="date" id="date-input" />
+        </label>
+        <button id="any-night" class="active">Any night</button>
+      </div>
 
       <div class="toggle" id="view-toggle">
-        <button data-view="list" class="active">List</button>
-        <button data-view="map">Map</button>
+        <button data-view="map" class="active">Map</button>
+        <button data-view="list">List</button>
       </div>
 
       <p class="count" id="count"></p>
-      <div id="map" hidden></div>
-      <ul class="huts" id="results"></ul>
+      <div id="map"></div>
+      <ul class="huts" id="results" hidden></ul>
       <div class="empty" id="empty" hidden>No huts with free beds for this selection.</div>
 
       <footer>
@@ -147,8 +167,7 @@
         Innsbruck: [47.2692, 11.4041], Salzburg: [47.8095, 13.055],
         Wien: [48.2082, 16.3738], Graz: [47.0707, 15.4395],
       };
-      const TONE_COLOR = { lots: '#059669', some: '#d97706', none: '#9ca3af' };
-      const state = { origin: null, originLabel: null, selectedDate: null, view: 'list' };
+      const state = { origin: null, originLabel: null, selectedDate: null, view: 'map' };
       const $ = (id) => document.getElementById(id);
 
       function haversineKm(a, b) {
@@ -171,6 +190,14 @@
           out.push(d.toISOString().slice(0, 10));
         }
         return out;
+      }
+
+      // --- date -----------------------------------------------------------
+      function setSelectedDate(v) {
+        state.selectedDate = v || null;
+        $('date-input').value = v || '';
+        $('any-night').classList.toggle('active', !v);
+        render();
       }
 
       // --- location -------------------------------------------------------
@@ -293,9 +320,13 @@
         const pts = [];
         huts.forEach((h) => {
           const free = h.night ? h.night.freeBeds : h.maxFree;
-          const m = L.circleMarker([h.lat, h.lng], {
-            radius: 7, color: '#fff', weight: 1.5, fillColor: TONE_COLOR[tone(free)], fillOpacity: .95,
+          const icon = L.divIcon({
+            className: '',
+            html: `<div class="hut-badge tone-${tone(free)}">${free}</div>`,
+            iconSize: [34, 20],
+            iconAnchor: [17, 10],
           });
+          const m = L.marker([h.lat, h.lng], { icon });
           const bedsLine = h.night
             ? `${h.night.freeBeds} free on ${fmtDate(h.night.date)}`
             : `up to ${h.maxFree} free in the next ${DATA.days} days`;
@@ -334,13 +365,12 @@
           if (!e.target.closest('.search')) $('results-list').hidden = true;
         });
 
-        $('dates').innerHTML = `<button class="chip active" data-date="">Any night</button>`
-          + dateList().map((d) => `<button class="chip" data-date="${d}">${fmtDate(d)}</button>`).join('');
-        $('dates').querySelectorAll('button').forEach((b) =>
-          b.addEventListener('click', () => {
-            $('dates').querySelectorAll('button').forEach((x) => x.classList.remove('active'));
-            b.classList.add('active'); state.selectedDate = b.dataset.date || null; render();
-          }));
+        const di = $('date-input');
+        const days = dateList();
+        di.min = days[0];
+        di.max = days[days.length - 1];
+        di.addEventListener('change', () => setSelectedDate(di.value || null));
+        $('any-night').addEventListener('click', () => setSelectedDate(null));
 
         $('view-toggle').querySelectorAll('button').forEach((b) =>
           b.addEventListener('click', () => {

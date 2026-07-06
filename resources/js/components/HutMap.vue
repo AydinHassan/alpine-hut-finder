@@ -25,10 +25,8 @@ function onKey(e: KeyboardEvent) {
     }
 }
 let map: L.Map | undefined;
-let tile: L.TileLayer | undefined;
 let hutLayer: L.LayerGroup | undefined;
 let meMarker: L.CircleMarker | undefined;
-let ro: ResizeObserver | undefined;
 
 const COLOR: Record<string, string> = { lots: '#059669', some: '#d97706', none: '#9ca3af' };
 const tone = (free: number) => (free <= 0 ? 'none' : free < 5 ? 'some' : 'lots');
@@ -82,34 +80,45 @@ function draw() {
     if (pts.length) map.fitBounds(pts, { padding: [30, 30], maxZoom: 12 });
 }
 
-onMounted(() => {
-    map = L.map(el.value!, { scrollWheelZoom: false }).setView([47.6, 13.3], 7);
-    tile = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+function initMap() {
+    if (!el.value) return;
+    map = L.map(el.value, { scrollWheelZoom: false }).setView([47.6, 13.3], 7);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 18,
         attribution: '&copy; OpenStreetMap contributors',
-    });
-    tile.addTo(map);
+    }).addTo(map);
     hutLayer = L.layerGroup().addTo(map);
     draw();
+}
 
-    // Fires after the browser commits any size change to the container (e.g. the
-    // fullscreen toggle) — the correct moment to let Leaflet reload tiles.
-    ro = new ResizeObserver(() => map?.invalidateSize());
-    ro.observe(el.value!);
+// Toggling fullscreen resizes the container. Rather than fight Leaflet's stale
+// tile geometry after a resize (invalidateSize proved unreliable across
+// browsers), tear the map down and build a fresh one in the now-correctly-sized
+// container — identical to the initial mount, which renders fine.
+function rebuild() {
+    map?.remove();
+    map = undefined;
+    meMarker = undefined;
+    initMap();
+}
 
+onMounted(() => {
+    initMap();
     document.addEventListener('keydown', onKey);
 });
 onBeforeUnmount(() => {
-    ro?.disconnect();
     document.removeEventListener('keydown', onKey);
     map?.remove();
 });
+
+// Rebuild once the browser has committed the new layout (double-rAF).
+watch(isFull, () => requestAnimationFrame(() => requestAnimationFrame(rebuild)));
 watch(() => [props.huts, props.origin] as const, draw, { deep: true });
 </script>
 
 <template>
     <div :class="isFull ? 'fixed inset-0 z-[2000] bg-background' : 'relative'">
-        <div ref="el" class="overflow-hidden bg-muted" :class="isFull ? 'h-dvh w-screen' : 'h-[460px] w-full rounded-xl border'"></div>
+        <div ref="el" class="overflow-hidden bg-muted" :class="isFull ? 'h-screen w-screen' : 'h-[460px] w-full rounded-xl border'"></div>
         <button
             type="button"
             class="absolute top-3 right-3 z-[500] flex size-9 items-center justify-center rounded-md border bg-background/90 text-foreground shadow-sm backdrop-blur transition hover:bg-accent"

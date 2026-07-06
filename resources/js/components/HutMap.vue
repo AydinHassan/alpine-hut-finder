@@ -1,11 +1,27 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import L from 'leaflet';
+import { Maximize2, Minimize2 } from 'lucide-vue-next';
 import type { HutView } from '@/types';
 
 const props = defineProps<{ huts: HutView[]; origin: [number, number] | null; days: number }>();
 
+const wrap = ref<HTMLDivElement | null>(null);
 const el = ref<HTMLDivElement | null>(null);
+const isFull = ref(false);
+
+function toggleFullscreen() {
+    if (document.fullscreenElement) {
+        document.exitFullscreen();
+    } else {
+        wrap.value?.requestFullscreen();
+    }
+}
+
+function onFullscreenChange() {
+    isFull.value = !!document.fullscreenElement;
+    nextTick(() => map?.invalidateSize());
+}
 let map: L.Map | undefined;
 let hutLayer: L.LayerGroup | undefined;
 let meMarker: L.CircleMarker | undefined;
@@ -71,10 +87,25 @@ onMounted(() => {
     hutLayer = L.layerGroup().addTo(map);
     draw();
 });
-onBeforeUnmount(() => map?.remove());
+onBeforeUnmount(() => {
+    document.removeEventListener('fullscreenchange', onFullscreenChange);
+    map?.remove();
+});
+document.addEventListener('fullscreenchange', onFullscreenChange);
 watch(() => [props.huts, props.origin] as const, draw, { deep: true });
 </script>
 
 <template>
-    <div ref="el" class="h-[460px] w-full overflow-hidden rounded-xl border"></div>
+    <div ref="wrap" class="relative">
+        <div ref="el" class="w-full overflow-hidden border" :class="isFull ? 'h-screen' : 'h-[460px] rounded-xl'"></div>
+        <button
+            type="button"
+            class="absolute top-3 right-3 z-[500] flex size-9 items-center justify-center rounded-md border bg-background/90 text-foreground shadow-sm backdrop-blur transition hover:bg-accent"
+            :title="isFull ? 'Exit fullscreen' : 'Fullscreen map'"
+            @click="toggleFullscreen"
+        >
+            <Minimize2 v-if="isFull" class="size-4" />
+            <Maximize2 v-else class="size-4" />
+        </button>
+    </div>
 </template>

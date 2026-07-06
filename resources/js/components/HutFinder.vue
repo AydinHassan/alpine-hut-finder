@@ -150,9 +150,14 @@ onMounted(autoLocate);
                 </Button>
                 <DatePicker v-model="selectedDate" :min="dates[0]" :max="dates[dates.length - 1]" class="ml-auto" />
             </div>
-            <p v-if="originLabel" class="mt-3 flex items-center gap-1 text-xs text-muted-foreground">
-                <MapPin class="size-3.5 text-primary" />
-                Near <strong class="text-foreground">{{ originLabel }}</strong> — sorted by distance.
+            <p class="mt-3 flex items-center gap-1 text-xs text-muted-foreground">
+                <MapPin class="size-3.5" :class="originLabel ? 'text-primary' : 'opacity-50'" />
+                <template v-if="originLabel">
+                    Near <strong class="text-foreground">{{ originLabel }}</strong> — sorted by distance.
+                </template>
+                <template v-else>
+                    {{ locating ? 'Finding your location…' : 'Search or use your location to sort by distance.' }}
+                </template>
             </p>
         </Card>
 

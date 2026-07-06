@@ -8,6 +8,9 @@ const props = defineProps<{ huts: HutView[]; origin: [number, number] | null; da
 
 const el = ref<HTMLDivElement | null>(null);
 const isFull = ref(false);
+// Shown while the map is being rebuilt on a fullscreen toggle, to mask the
+// teardown (which would otherwise flash the empty container background).
+const swapping = ref(false);
 
 // "Pseudo" fullscreen — a fixed full-viewport overlay rather than the browser
 // Fullscreen API, which is flaky (black backdrop, headless quirks). Leaflet
@@ -83,10 +86,13 @@ function draw() {
 function initMap() {
     if (!el.value) return;
     map = L.map(el.value, { scrollWheelZoom: false }).setView([47.6, 13.3], 7);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    const tiles = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
         maxZoom: 18,
         attribution: '&copy; OpenStreetMap contributors',
-    }).addTo(map);
+    });
+    // Lift the swap mask only once the tiles for the new view have painted.
+    tiles.on('load', () => (swapping.value = false));
+    tiles.addTo(map);
     hutLayer = L.layerGroup().addTo(map);
     draw();
 }
@@ -96,10 +102,13 @@ function initMap() {
 // browsers), tear the map down and build a fresh one in the now-correctly-sized
 // container — identical to the initial mount, which renders fine.
 function rebuild() {
+    swapping.value = true;
     map?.remove();
     map = undefined;
     meMarker = undefined;
     initMap();
+    // Safety net in case the tile 'load' event never fires.
+    setTimeout(() => (swapping.value = false), 1500);
 }
 
 onMounted(() => {
@@ -111,14 +120,26 @@ onBeforeUnmount(() => {
     map?.remove();
 });
 
-// Rebuild once the browser has committed the new layout (double-rAF).
-watch(isFull, () => requestAnimationFrame(() => requestAnimationFrame(rebuild)));
+// Mask immediately (before any teardown), then rebuild once the browser has
+// committed the new layout (double-rAF).
+watch(isFull, () => {
+    swapping.value = true;
+    requestAnimationFrame(() => requestAnimationFrame(rebuild));
+});
 watch(() => [props.huts, props.origin] as const, draw, { deep: true });
 </script>
 
 <template>
     <div :class="isFull ? 'fixed inset-0 z-[2000] bg-background' : 'relative'">
         <div ref="el" class="overflow-hidden bg-muted" :class="isFull ? 'h-screen w-screen' : 'h-[460px] w-full rounded-xl border'"></div>
+        <!-- masks the brief map rebuild on a fullscreen toggle -->
+        <div
+            v-show="swapping"
+            class="absolute inset-0 z-[1900] flex items-center justify-center bg-muted"
+            :class="isFull ? '' : 'rounded-xl'"
+        >
+            <div class="size-6 animate-spin rounded-full border-2 border-muted-foreground/30 border-t-muted-foreground"></div>
+        </div>
         <button
             type="button"
             class="absolute top-3 right-3 z-[500] flex size-9 items-center justify-center rounded-md border bg-background/90 text-foreground shadow-sm backdrop-blur transition hover:bg-accent"

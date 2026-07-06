@@ -23,6 +23,13 @@ class OsmSource extends AbstractHutSource
 
     private const DEDUPE_METRES = 250;
 
+    // The main Overpass endpoint often 504s under load; fall through to mirrors.
+    private const ENDPOINTS = [
+        'https://overpass-api.de/api/interpreter',
+        'https://overpass.kumi.systems/api/interpreter',
+        'https://overpass.private.coffee/api/interpreter',
+    ];
+
     private const QUERY = <<<'OVERPASS'
         [out:json][timeout:120];
         area["name"="Österreich"]["admin_level"="2"]->.at;
@@ -155,21 +162,24 @@ class OsmSource extends AbstractHutSource
             return json_decode((string) $disk->get(self::CACHE), true)['elements'] ?? [];
         }
 
-        try {
-            $response = Http::asForm()
-                ->timeout(150)
-                ->withHeaders(['User-Agent' => 'alpine-hut-finder/1.0 (huts.aydinhassan.co.uk)'])
-                ->post('https://overpass-api.de/api/interpreter', ['data' => self::QUERY]);
-        } catch (\Throwable) {
-            return [];
+        foreach (self::ENDPOINTS as $url) {
+            try {
+                $response = Http::asForm()
+                    ->timeout(180)
+                    ->retry(2, 2000, throw: false)
+                    ->withHeaders(['User-Agent' => 'alpine-hut-finder/1.0 (huts.aydinhassan.co.uk)'])
+                    ->post($url, ['data' => self::QUERY]);
+            } catch (\Throwable) {
+                continue;
+            }
+
+            if ($response->successful() && is_array($response->json()) && ! empty($response->json()['elements'])) {
+                $disk->put(self::CACHE, $response->body());
+
+                return $response->json()['elements'];
+            }
         }
 
-        if (! $response->successful() || ! is_array($response->json())) {
-            return [];
-        }
-
-        $disk->put(self::CACHE, $response->body());
-
-        return $response->json()['elements'] ?? [];
+        return [];
     }
 }

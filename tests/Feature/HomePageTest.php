@@ -11,6 +11,14 @@ class HomePageTest extends TestCase
 {
     use RefreshDatabase;
 
+    protected function setUp(): void
+    {
+        parent::setUp();
+        // The page mounts a Vite-built Vue app; stub the @vite tags so the view
+        // renders without a built manifest (CI runs tests without building assets).
+        $this->withoutVite();
+    }
+
     public function test_home_page_renders_the_app_shell(): void
     {
         // The UI is a Vue/shadcn SPA — the server ships a shell plus the

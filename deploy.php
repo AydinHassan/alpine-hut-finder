@@ -27,8 +27,13 @@ host('personal')
     ->setRemoteUser('deploy')
     ->set('deploy_path', '/var/www/huts');
 
-// This app's page is a self-contained Blade view (no Vite/Inertia), so there is
-// no asset build or upload step — the server needs neither node nor a manifest.
+// Front end is a Vue/shadcn SPA built by Vite. Assets are built in CI (see
+// .github/workflows/deploy.yml) and uploaded into each release — the server
+// itself needs neither node nor npm.
+task('assets:upload', function () {
+    upload('public/build/', '{{release_path}}/public/build/');
+});
+after('deploy:update_code', 'assets:upload');
 
 // Run migrations before the new release goes live.
 before('deploy:symlink', 'artisan:migrate');

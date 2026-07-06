@@ -68,11 +68,18 @@
       .toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 9px; overflow: hidden; margin-bottom: 1rem; }
       .toggle button { border: 0; border-radius: 0; padding: .45rem 1rem; }
       .toggle button.active { background: var(--accent); color: var(--accent-fg); }
-      /* date field */
-      .daterow { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-bottom: 1rem; }
-      .datelabel { display: flex; align-items: center; gap: .4rem; font-size: .85rem; color: var(--muted); }
-      .datelabel input { font: inherit; padding: .4rem .55rem; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--fg); }
-      #any-night.active { border-color: var(--accent); background: rgba(16,185,129,.12); }
+      /* date strip (in the top panel) */
+      .daystrip { display: flex; gap: .4rem; overflow-x: auto; margin-top: .85rem; padding-bottom: .15rem; }
+      .day {
+        flex: 0 0 auto; display: flex; flex-direction: column; align-items: center; justify-content: center;
+        gap: 1px; min-width: 46px; padding: .35rem; border-radius: 10px; line-height: 1.15;
+        border: 1px solid var(--border); background: var(--bg); cursor: pointer;
+      }
+      .day:hover { background: rgba(125,125,125,.08); }
+      .day .dow { font-size: .62rem; color: var(--muted); text-transform: uppercase; letter-spacing: .03em; }
+      .day .dom { font-size: 1.02rem; font-weight: 700; }
+      .day.active { border-color: var(--accent); background: rgba(16,185,129,.14); }
+      .day.active .dow { color: var(--accent); }
       /* map */
       #map { height: 460px; border-radius: 12px; border: 1px solid var(--border); margin-bottom: 1rem; }
       /* numbered availability badge on the map */
@@ -129,14 +136,8 @@
           <span id="presets" class="row"></span>
         </div>
         <p class="loc-label muted" id="origin"></p>
+        <div class="daystrip" id="dates"></div>
       </section>
-
-      <div class="daterow">
-        <label class="datelabel">Night
-          <input type="date" id="date-input" />
-        </label>
-        <button id="any-night" class="active">Any night</button>
-      </div>
 
       <div class="toggle" id="view-toggle">
         <button data-view="map" class="active">Map</button>
@@ -195,8 +196,8 @@
       // --- date -----------------------------------------------------------
       function setSelectedDate(v) {
         state.selectedDate = v || null;
-        $('date-input').value = v || '';
-        $('any-night').classList.toggle('active', !v);
+        document.querySelectorAll('#dates .day').forEach((b) =>
+          b.classList.toggle('active', (b.dataset.date || '') === (v || '')));
         render();
       }
 
@@ -224,6 +225,19 @@
           () => { $('locate').textContent = '📍 Use my location'; $('origin').textContent = 'Could not get your location — search or pick a city below.'; },
           { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
         );
+      }
+
+      // Try to locate on load (prompts once; skipped silently if the user has
+      // previously denied location access).
+      async function autoLocate() {
+        if (!navigator.geolocation) return;
+        try {
+          if (navigator.permissions) {
+            const s = await navigator.permissions.query({ name: 'geolocation' });
+            if (s.state === 'denied') return;
+          }
+        } catch (e) { /* Permissions API unsupported — just try */ }
+        locate();
       }
 
       // --- search (debounced, cached server-side) -------------------------
@@ -365,12 +379,18 @@
           if (!e.target.closest('.search')) $('results-list').hidden = true;
         });
 
-        const di = $('date-input');
-        const days = dateList();
-        di.min = days[0];
-        di.max = days[days.length - 1];
-        di.addEventListener('change', () => setSelectedDate(di.value || null));
-        $('any-night').addEventListener('click', () => setSelectedDate(null));
+        const cell = (dom, dow, date, active) =>
+          `<button class="day${active ? ' active' : ''}" data-date="${date}">` +
+          `<span class="dow">${dow}</span><span class="dom">${dom}</span></button>`;
+        $('dates').innerHTML =
+          cell('Any', '&nbsp;', '', true) +
+          dateList().map((d, i) => {
+            const dt = new Date(d + 'T00:00:00');
+            const dow = i === 0 ? 'Today' : dt.toLocaleDateString(undefined, { weekday: 'short' });
+            return cell(dt.getDate(), dow, d, false);
+          }).join('');
+        $('dates').querySelectorAll('.day').forEach((b) =>
+          b.addEventListener('click', () => setSelectedDate(b.dataset.date || null)));
 
         $('view-toggle').querySelectorAll('button').forEach((b) =>
           b.addEventListener('click', () => {
@@ -391,6 +411,7 @@
         + (upd ? ` Updated ${upd}.` : '');
       build();
       render();
+      autoLocate();
     </script>
   </body>
 </html>

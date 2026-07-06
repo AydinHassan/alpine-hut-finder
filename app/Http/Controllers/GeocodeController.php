@@ -52,11 +52,14 @@ class GeocodeController extends Controller
                 return [];
             }
 
+            // Nominatim often returns several OSM objects for one place (a node
+            // plus its administrative boundary, say) that reduce to the same
+            // label — dedupe by the name we display, keeping the highest-ranked.
             return collect($response->json())->map(fn ($p) => [
                 'name' => $this->shortName($p),
                 'lat' => (float) $p['lat'],
                 'lng' => (float) $p['lon'],
-            ])->all();
+            ])->unique('name')->values()->all();
         });
 
         return response()->json($results);

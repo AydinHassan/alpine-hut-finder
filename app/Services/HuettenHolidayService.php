@@ -144,6 +144,7 @@ class HuettenHolidayService
                 ]);
                 $rows = is_array($response->json()) ? $response->json() : [];
                 $this->cachePut($key, $rows);
+                usleep(150000); // 150ms — gentle on the upstream between live calls
             }
 
             foreach ($rows as $row) {

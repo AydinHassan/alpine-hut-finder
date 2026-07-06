@@ -29,6 +29,9 @@ class HutReservationService
 
     private const HUTINFO_TTL = 2592000; // 30 days
 
+    /** Pause after each *live* upstream call (µs) to stay gentle on the API. */
+    private const REQUEST_DELAY_US = 150000; // 150ms
+
     /** Availability cache TTL in seconds; 0 disables (always fetch). */
     public int $availabilityTtl = 1800; // 30 min
 
@@ -84,6 +87,8 @@ class HutReservationService
             // Transient network failure after retries — skip this id rather
             // than crashing a 700-hut enumeration.
             return null;
+        } finally {
+            usleep(self::REQUEST_DELAY_US);
         }
 
         if (! $response->successful() || ! is_array($response->json())) {
@@ -112,6 +117,8 @@ class HutReservationService
             $response = $this->client()->get('/getHutAvailability', ['hutId' => $hutId]);
         } catch (\Throwable) {
             return [];
+        } finally {
+            usleep(self::REQUEST_DELAY_US);
         }
 
         if (! $response->successful() || ! is_array($response->json())) {

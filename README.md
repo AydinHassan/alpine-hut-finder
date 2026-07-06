@@ -1,58 +1,126 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# ⛰️ Alpine Hut Finder — last-minute beds in Austria
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Find Austrian Alpine huts with **free beds in the next two weeks**, sorted by
+distance from you, on a map and in a list. Search a place or use your location,
+pick a night, and click straight through to book.
 
-## About Laravel
+Live: **https://huts.aydinhassan.co.uk**
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+Laravel 13 API + a Vue 3 / **shadcn-vue** front end, deployed to a self-hosted
+server (`imp`) with auto-deploy on merge to `main`.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+## Where the data comes from
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+Two booking platforms expose **real per-date free-bed counts** and are the only
+sources with queryable availability for Austrian huts:
 
-## Learning Laravel
+| Source (`huts.source`) | What | Endpoint |
+| --- | --- | --- |
+| `hrs` | Alpenverein / SAC Hut Reservation Service — DAV, ÖAV, AVS, SAC huts | `hut-reservation.org/api/v1/reservation` |
+| `huetten-holiday` | ÖTK, private Schutzhütten, opted-out AV sections (e.g. Fischerhütte) | `huetten-holiday.com` |
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+Together ≈ **275 Austrian huts** with live availability. (Most of Austria's
+~1,500 huts — Naturfreunde, many private — have *no* queryable availability at
+all; they book by phone/email only.)
 
-In addition, [Laracasts](https://laracasts.com) contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+## How availability checking works (and no, it doesn't hammer the APIs)
 
-You can also watch bite-sized lessons with real-world projects on [Laravel Learn](https://laravel.com/learn), where you will be guided through building a Laravel application from scratch while learning PHP fundamentals.
+The golden rule: **the upstream APIs are never called when someone loads the
+page.** Page loads only read our own database. All fetching happens on a
+schedule, off to the side, and is cached.
 
-## Agentic Development
+**Two scheduled jobs** (`routes/console.php`, run by Laravel's scheduler via a
+one-line cron on the server):
 
-Laravel's predictable structure and conventions make it ideal for AI coding agents like Claude Code, Cursor, and GitHub Copilot. Install [Laravel Boost](https://laravel.com/docs/ai) to supercharge your AI workflow:
+| Job | Cadence | What it does |
+| --- | --- | --- |
+| `huts:sync --availability` | **hourly** | refresh free-bed counts for every stored hut |
+| `huts:sync --catalog` | **weekly** (Sun 03:00) | re-discover huts + metadata |
+
+**Three layers keep it gentle:**
+
+1. **Poll-and-cache** — availability lives in the `hut_availabilities` table.
+   The website serves that; it does not touch the upstream. A page view = 0
+   upstream requests.
+2. **On-disk response cache** (`storage/app/{hrs,hh}-cache`): hut metadata is
+   cached **30 days**, availability **30 minutes**. So re-runs, deploys and
+   local experiments reuse saved responses instead of re-fetching.
+3. **Per-request throttle** — every *live* upstream call is followed by a
+   ~150 ms pause, and each request sends an identifying `User-Agent`.
+
+**Roughly what that means in requests:**
+
+- **Hourly availability sync:** ~275 huts → ~300 requests, spaced ~150 ms
+  apart, so the whole run takes ~1 minute at ≈5 req/s. Cache hits (anything
+  refreshed within the last 30 min) make no request at all.
+- **Weekly catalogue sync:** hut metadata is cached 30 days, so most weekly runs
+  are **entirely cache hits (zero upstream requests)**. A full re-probe of the
+  id space (~700 lightweight `hutInfo` calls, throttled) happens only about
+  **once a month**, when the metadata cache ages out.
+- **Deploys:** do **not** sync — data lives in the DB and persists across
+  releases, so a deploy makes no upstream calls.
+
+You can run any of it by hand:
 
 ```bash
-composer require laravel/boost --dev
-
-php artisan boost:install
+php artisan huts:sync                      # both phases, all sources
+php artisan huts:sync --availability       # just free beds (what cron runs hourly)
+php artisan huts:sync --catalog            # just the hut list
+php artisan huts:sync --source=hrs         # only one source
 ```
 
-Boost provides your agent 15+ tools and skills that help agents build Laravel applications while following best practices.
+> **Note on the sources.** The `hrs` API is undocumented/unofficial and no ToS
+> explicitly permits automated polling. The design above (cache, throttle,
+> schedule, never-on-page-view) is deliberately a good citizen; keep it that way
+> if you fork/deploy it.
 
-## Contributing
+## Architecture
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+```
+schedule ─▶ huts:sync ─▶ HutSource (per platform) ─▶ huts + hut_availabilities (DB)
+                                                             │
+GET /  ─▶ HutFinderController ─▶ Blade shell + JSON payload ─▶ Vue/shadcn app
+GET /geocode ─▶ cached Nominatim proxy (search + reverse, for the location box)
+```
 
-## Code of Conduct
+Adding a data source = implement `App\Sources\HutSource` and add one line to
+`config/huts.php`. The shared base class (`AbstractHutSource`) handles the
+Austria border test, hut upserts, and the free-beds clamp.
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+| Path | What |
+| --- | --- |
+| `app/Sources/*` | the source abstraction + `HrsSource`, `HuettenHolidaySource` |
+| `app/Services/*` | the raw HTTP clients (with caching + throttle) |
+| `app/Console/Commands/SyncHuts.php` | the `huts:sync` command |
+| `app/Http/Controllers/HutFinderController.php` | builds the page payload |
+| `app/Http/Controllers/GeocodeController.php` | cached geocoding proxy |
+| `resources/js/**` | the Vue 3 / shadcn-vue front end |
 
-## Security Vulnerabilities
+## Run it locally
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+Requires **PHP 8.3+**, Composer, and **Node 22+**.
+
+```bash
+composer install
+npm install
+cp .env.example .env && php artisan key:generate
+touch database/database.sqlite
+php artisan migrate
+
+php artisan huts:sync            # populate the cache (first run ~a few min)
+
+npm run build                    # or `npm run dev` for HMR
+php artisan serve                # → http://localhost:8000
+```
+
+Keep it fresh with cron: `* * * * * cd /path && php artisan schedule:run`.
+
+## Deploy
+
+Push to `main` → GitHub Actions runs the test suite, builds the Vue assets, and
+deploys to `imp` via Deployer over Tailscale. See `deploy.php` and
+`.github/workflows/`.
 
 ## License
 
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+MIT

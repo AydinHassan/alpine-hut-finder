@@ -20,7 +20,7 @@ namespace App\Support;
 class CoordinateParser
 {
     /**
-     * @return array{0: float, 1: float}|null  [lat, lon] or null
+     * @return array{0: float, 1: float}|null [lat, lon] or null
      */
     public static function parse(?string $raw): ?array
     {
@@ -43,6 +43,7 @@ class CoordinateParser
             }
             if (count($vals) === 2) {
                 [$a, $b] = $vals;
+
                 return self::validate($a >= $b ? $a : $b, $a >= $b ? $b : $a);
             }
 
@@ -116,7 +117,7 @@ class CoordinateParser
     /**
      * UTM (WGS84) inverse — Snyder/USGS series, accurate to well under a metre.
      *
-     * @return array{0: float, 1: float}  [lat, lon] in degrees
+     * @return array{0: float, 1: float} [lat, lon] in degrees
      */
     private static function utmToLatLon(float $easting, float $northing, int $zone): array
     {

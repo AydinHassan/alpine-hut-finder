@@ -1,0 +1,52 @@
+name: Deploy
+
+# Auto-deploy after the test suite passes on main, exactly like duopay /
+# grid-planner: the "tests" workflow completing successfully triggers this one.
+on:
+  workflow_run:
+    workflows: ["tests"]
+    types: [completed]
+    branches: [main]
+
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v7
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.5'
+
+      # No node/asset build: the page is a self-contained Blade view.
+      - name: Install PHP dependencies
+        run: composer install --no-progress --prefer-dist --no-interaction --no-dev --optimize-autoloader
+
+      - name: Install Deployer
+        run: composer global require deployer/deployer
+
+      - name: Set up SSH
+        uses: webfactory/ssh-agent@v0.10.0
+        with:
+          ssh-private-key: ${{ secrets.DEPLOY_SSH_KEY }}
+
+      - name: Connect to Tailscale
+        uses: tailscale/github-action@v4
+        with:
+          oauth-client-id: ${{ secrets.TS_OAUTH_CLIENT_ID }}
+          oauth-secret: ${{ secrets.TS_OAUTH_SECRET }}
+          tags: tag:ci
+
+      - name: Add server to known hosts
+        run: ssh-keyscan -H 100.70.13.88 >> ~/.ssh/known_hosts
+
+      - name: Deploy
+        run: dep deploy personal --no-interaction

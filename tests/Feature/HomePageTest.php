@@ -11,11 +11,14 @@ class HomePageTest extends TestCase
 {
     use RefreshDatabase;
 
-    public function test_home_page_renders_with_no_data(): void
+    public function test_home_page_renders_the_app_shell(): void
     {
+        // The UI is a Vue/shadcn SPA — the server ships a shell plus the
+        // hut payload embedded for the client to mount from.
         $this->get('/')
             ->assertStatus(200)
-            ->assertSee('Hut beds, last minute');
+            ->assertSee('id="app"', false)
+            ->assertSee('window.__HUTS__', false);
     }
 
     public function test_home_page_ships_huts_that_have_free_beds(): void

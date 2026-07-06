@@ -26,9 +26,19 @@ jobs:
         with:
           php-version: '8.5'
 
-      # No node/asset build: the page is a self-contained Blade view.
       - name: Install PHP dependencies
         run: composer install --no-progress --prefer-dist --no-interaction --no-dev --optimize-autoloader
+
+      - name: Set up Node
+        uses: actions/setup-node@v6
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Build assets
+        run: |
+          npm ci
+          npm run build
 
       - name: Install Deployer
         run: composer global require deployer/deployer

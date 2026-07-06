@@ -40,6 +40,7 @@ class HutFinderController extends Controller
                 'lng' => $hut->longitude,
                 'altitude' => $hut->altitude,
                 'totalBeds' => $hut->total_beds,
+                'website' => $hut->website,
                 'bookingUrl' => $hut->bookingUrl(),
                 'nights' => $hut->availabilities->map(fn ($a) => [
                     'date' => $a->date->toDateString(),

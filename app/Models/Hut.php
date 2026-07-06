@@ -12,7 +12,7 @@ class Hut extends Model
     protected $keyType = 'int';
 
     protected $fillable = [
-        'id', 'source', 'name', 'country', 'club', 'latitude', 'longitude',
+        'id', 'source', 'bookable_online', 'name', 'country', 'club', 'latitude', 'longitude',
         'altitude', 'total_beds', 'phone', 'email', 'website', 'booking_url', 'catalog_synced_at',
     ];
 
@@ -22,6 +22,7 @@ class Hut extends Model
     protected function casts(): array
     {
         return [
+            'bookable_online' => 'boolean',
             'latitude' => 'float',
             'longitude' => 'float',
             'altitude' => 'integer',

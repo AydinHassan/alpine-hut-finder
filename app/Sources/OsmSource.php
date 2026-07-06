@@ -40,6 +40,11 @@ class OsmSource extends AbstractHutSource
         return 'OpenStreetMap (book direct)';
     }
 
+    public function providesAvailability(): bool
+    {
+        return false;
+    }
+
     /** OSM huts have no queryable availability. */
     public function syncAvailability(int $days): int
     {

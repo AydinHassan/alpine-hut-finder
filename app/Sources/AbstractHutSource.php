@@ -17,6 +17,12 @@ abstract class AbstractHutSource implements HutSource
 {
     private ?AustriaBoundary $austria = null;
 
+    /** Most sources have online availability; metadata-only ones override this. */
+    public function providesAvailability(): bool
+    {
+        return true;
+    }
+
     protected function inAustria(?float $lat, ?float $lon): bool
     {
         if ($lat === null || $lon === null) {
@@ -36,7 +42,11 @@ abstract class AbstractHutSource implements HutSource
     {
         Hut::updateOrCreate(
             ['id' => $id],
-            $attributes + ['source' => $this->key(), 'catalog_synced_at' => now()],
+            $attributes + [
+                'source' => $this->key(),
+                'bookable_online' => $this->providesAvailability(),
+                'catalog_synced_at' => now(),
+            ],
         );
     }
 

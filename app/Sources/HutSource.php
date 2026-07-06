@@ -16,6 +16,9 @@ interface HutSource
     /** Human-readable name for CLI output. */
     public function label(): string;
 
+    /** Whether this source provides queryable online availability. */
+    public function providesAvailability(): bool;
+
     /**
      * Fetch this source's catalogue and upsert the huts physically in Austria.
      *

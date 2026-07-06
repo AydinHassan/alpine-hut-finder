@@ -50,12 +50,13 @@ class HutFinderController extends Controller
             ])
             ->values();
 
-        // Book-direct huts: we hold no availability for them, only contact
-        // details. Shown behind an opt-in toggle so people can still find them.
+        // Book-direct huts: sources without an online booking system (phone/email
+        // only). A booked-out *online* hut is bookable_online=true and simply has
+        // no free beds — it is NOT shown here. Behind an opt-in toggle.
         $manualHuts = Hut::query()
             ->whereNotNull('latitude')
             ->whereNotNull('longitude')
-            ->whereDoesntHave('availabilities')
+            ->where('bookable_online', false)
             ->where(fn ($q) => $q->whereNotNull('phone')->orWhereNotNull('email')->orWhereNotNull('website'))
             ->orderBy('name')
             ->get()

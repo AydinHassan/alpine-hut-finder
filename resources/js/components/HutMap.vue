@@ -6,21 +6,23 @@ import type { HutView } from '@/types';
 
 const props = defineProps<{ huts: HutView[]; origin: [number, number] | null; days: number }>();
 
-const wrap = ref<HTMLDivElement | null>(null);
 const el = ref<HTMLDivElement | null>(null);
 const isFull = ref(false);
 
+// "Pseudo" fullscreen — a fixed full-viewport overlay rather than the browser
+// Fullscreen API, which is flaky (black backdrop, headless quirks). Leaflet
+// must be told to recompute its size once the container has resized.
 function toggleFullscreen() {
-    if (document.fullscreenElement) {
-        document.exitFullscreen();
-    } else {
-        wrap.value?.requestFullscreen();
-    }
+    isFull.value = !isFull.value;
+    nextTick(() => map?.invalidateSize());
+    setTimeout(() => map?.invalidateSize(), 120);
 }
 
-function onFullscreenChange() {
-    isFull.value = !!document.fullscreenElement;
-    nextTick(() => map?.invalidateSize());
+function onKey(e: KeyboardEvent) {
+    if (e.key === 'Escape' && isFull.value) {
+        isFull.value = false;
+        nextTick(() => map?.invalidateSize());
+    }
 }
 let map: L.Map | undefined;
 let hutLayer: L.LayerGroup | undefined;
@@ -87,17 +89,17 @@ onMounted(() => {
     hutLayer = L.layerGroup().addTo(map);
     draw();
 });
+onMounted(() => document.addEventListener('keydown', onKey));
 onBeforeUnmount(() => {
-    document.removeEventListener('fullscreenchange', onFullscreenChange);
+    document.removeEventListener('keydown', onKey);
     map?.remove();
 });
-document.addEventListener('fullscreenchange', onFullscreenChange);
 watch(() => [props.huts, props.origin] as const, draw, { deep: true });
 </script>
 
 <template>
-    <div ref="wrap" class="relative">
-        <div ref="el" class="w-full overflow-hidden border" :class="isFull ? 'h-screen' : 'h-[460px] rounded-xl'"></div>
+    <div :class="isFull ? 'fixed inset-0 z-[2000] bg-background p-3' : 'relative'">
+        <div ref="el" class="w-full overflow-hidden border bg-muted" :class="isFull ? 'h-full rounded-lg' : 'h-[460px] rounded-xl'"></div>
         <button
             type="button"
             class="absolute top-3 right-3 z-[500] flex size-9 items-center justify-center rounded-md border bg-background/90 text-foreground shadow-sm backdrop-blur transition hover:bg-accent"

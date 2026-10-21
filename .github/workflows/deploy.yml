@@ -60,4 +60,4 @@ jobs:
         run: ssh-keyscan -H 100.70.13.88 >> ~/.ssh/known_hosts
 
       - name: Deploy
-        run: dep deploy personal --no-interaction
+        run: dep deploy imp --no-interaction

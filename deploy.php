@@ -22,7 +22,7 @@ add('writable_dirs', []);
 set('allow_anonymous_stats', false);
 
 // Host — imp (same box as duopay / grid-planner), reached over Tailscale.
-host('personal')
+host('imp')
     ->setHostname('100.70.13.88')
     ->setRemoteUser('deploy')
     ->set('deploy_path', '/var/www/huts');

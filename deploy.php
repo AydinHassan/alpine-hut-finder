@@ -9,7 +9,7 @@ set('application', 'huts');
 
 // Project repository — cloned on the server via the `github-huts` ssh alias
 // (see the deploy user's ~/.ssh/config on imp).
-set('repository', 'git@github-huts:AydinHassan/alpine-hut-finder.git');
+set('repository', 'git@github-huts:AydinAcme/alpine-hut-finder.git');
 
 set('git_tty', false);
 

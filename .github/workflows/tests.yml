@@ -29,3 +29,26 @@ jobs:
 
       - name: Run tests
         run: php artisan test --stop-on-error
+
+  automerge:
+    needs: test
+    if: github.event_name == 'pull_request' && github.event.pull_request.user.login == 'dependabot[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: write
+      pull-requests: write
+      actions: write
+    steps:
+      - id: meta
+        uses: dependabot/fetch-metadata@v3
+
+      # Merges made with GITHUB_TOKEN don't fire push workflows, so start the deploy explicitly.
+      - if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        run: |
+          gh pr merge --squash "$PR_URL"
+          gh workflow run deploy.yml -R "$GITHUB_REPOSITORY" --ref "$BASE_REF"
+        env:
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          BASE_REF: ${{ github.event.pull_request.base.ref }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

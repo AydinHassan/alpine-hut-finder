@@ -1,33 +1,21 @@
 name: Dependabot auto-merge
 
-# Merges the weekly grouped Dependabot PRs once the tests pass. Groups only hold
-# minor/patch updates; majors come as their own PRs and are left for review.
-on:
-  workflow_run:
-    workflows: ["tests"]
-    types: [completed]
+on: pull_request
 
 jobs:
   automerge:
-    if: >-
-      github.event.workflow_run.event == 'pull_request' &&
-      github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.actor.login == 'dependabot[bot]' &&
-      github.event.workflow_run.head_repository.full_name == github.repository
+    if: github.event.pull_request.user.login == 'dependabot[bot]'
     runs-on: ubuntu-latest
     timeout-minutes: 5
     permissions:
       contents: write
       pull-requests: write
-      actions: write
     steps:
-      # Grouped PR branches look like dependabot/composer/composer-d65d238357.
-      # A merge made with GITHUB_TOKEN doesn't trigger the push deploy, so start it directly.
-      - run: |
-          [[ "$BRANCH" =~ ^dependabot/[a-z_]+/[a-z-]+-[0-9a-f]{10}$ ]] || exit 0
-          gh pr merge --squash -R "$GITHUB_REPOSITORY" "$BRANCH"
-          gh workflow run deploy.yml -R "$GITHUB_REPOSITORY" --ref "$DEFAULT_BRANCH"
+      - id: meta
+        uses: dependabot/fetch-metadata@v3
+
+      - if: steps.meta.outputs.update-type != 'version-update:semver-major'
+        run: gh pr merge --auto --squash "$PR_URL"
         env:
-          BRANCH: ${{ github.event.workflow_run.head_branch }}
-          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
